@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent Interpretability Dashboard - Visualizing Internal Reasoning</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0e17;
+            --bg-secondary: #111827;
+            --bg-card: #1a2332;
+            --bg-card-hover: #243044;
+            --text-primary: #f0f4f8;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --accent-blue: #3b82f6;
+            --accent-cyan: #06b6d4;
+            --accent-green: #10b981;
+            --accent-yellow: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-purple: #8b5cf6;
+            --border-color: #2d3748;
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            line-height: 1.6;
+        }
+
+        .header {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 20px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .header-title h1 {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-title p {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .realtime-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 20px;
+            font-size: 13px;
+            color: var(--accent-green);
+        }
+
+        .realtime-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: blink 1.5s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .container {
+            padding: 32px 40px;
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow);
+            border-color: rgba(6, 182, 212, 0.3);
+        }
+
+        .stat-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+        }
+
+        .stat-icon.blue { background: rgba(59, 130, 246, 0.15); }
+        .stat-icon.cyan { background: rgba(6, 182, 212, 0.15); }
+        .stat-icon.green { background: rgba(16, 185, 129, 0.15); }
+        .stat-icon.purple { background: rgba(139, 92, 246, 0.15); }
+
+        .stat-trend {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .stat-trend.up { color: var(--accent-green); }
+        .stat-trend.down { color: var(--accent-red); }
+
+        .stat-value {
+            font-size: 36px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .section-title span {
+            font-size: 24px;
+        }
+
+        .charts-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+
+        .chart-card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .chart-header {
+            margin-bottom: 20px;
+        }
+
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .chart-container {
+            height: 280px;
+            position: relative;
+        }
+
+        /* Reasoning Chain Timeline */
+        .reasoning-section {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 32px;
+        }
+
+        .chain-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+
+        .chain-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .chain-id {
+            font-size: 13px;
+            color: var(--accent-cyan);
+            background: rgba(6, 182, 212, 0.15);
+            padding: 4px 12px;
+            border-radius: 12px;
+        }
+
+        .reasoning-step {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            margin-bottom: 16px;
+            border-left: 4px solid var(--accent-cyan);
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .reasoning-step:hover {
+            background: var(--bg-card-hover);
+            transform: translateX(8px);
+        }
+
+        .reasoning-step::after {
+            content: '';
+            position: absolute;
+            left: 50%;
+            bottom: -20px;
+            transform: translateX(-50%);
+            width: 2px;
+            height: 20px;
+            background: var(--border-color);
+        }
+
+        .reasoning-step:last-child::after {
+            display: none;
+        }
+
+        .step-number {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-blue));
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 16px;
+            flex-shrink: 0;
+        }
+
+        .step-content {
+            flex: 1;
+        }
+
+        .step-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .step-title {
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .step-confidence {
+            font-size: 14px;
+            padding: 4px 12px;
+            border-radius: 6px;
+            font-weight: 500;
+        }
+
+        .step-confidence.high {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--accent-green);
+        }
+
+        .step-confidence.medium {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--accent-yellow);
+        }
+
+        .step-confidence.low {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-red);
+        }
+
+        .step-description {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .step-meta {
+            display: flex;
+            gap: 20px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .step-meta span {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Abstraction Layers */
+        .abstraction-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 32px;
+        }
+
+        .abstraction-card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+        }
+
+        .abstraction-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .abstraction-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .abstraction-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+
+        .abstraction-status.active { 
+            background: var(--accent-green);
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.5);
+        }
+
+        .abstraction-progress {
+            height: 8px;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 12px;
+        }
+
+        .abstraction-progress-bar {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+
+        .abstraction-info {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        /* Planning Mechanisms */
+        .planning-section {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .planning-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+        }
+
+        .planning-card {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .planning-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .planning-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .planning-status {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .planning-status.active { background: var(--accent-green); }
+        .planning-status.pending { background: var(--accent-yellow); }
+        .planning-status.idle { background: var(--text-muted); }
+
+        .planning-progress {
+            height: 6px;
+            background: var(--bg-card);
+            border-radius: 3px;
+            overflow: hidden;
+            margin-bottom: 8px;
+        }
+
+        .planning-progress-bar {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .planning-info {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        @media (max-width: 1200px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .charts-grid { grid-template-columns: 1fr; }
+            .abstraction-grid { grid-template-columns: repeat(2, 1fr); }
+            .planning-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: 1fr; }
+            .abstraction-grid { grid-template-columns: 1fr; }
+            .planning-grid { grid-template-columns: 1fr; }
+            .container { padding: 20px; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-left">
+            <div class="logo-icon">🧠</div>
+            <div class="header-title">
+                <h1>Agent Interpretability Dashboard</h1>
+                <p>Visualizing internal reasoning paths, planning mechanisms & abstraction layers</p>
+            </div>
+        </div>
+        <div class="realtime-badge">
+            <div class="realtime-dot"></div>
+            <span>Live Reasoning</span>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Stats Overview -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon blue">🔍</div>
+                    <div class="stat-trend up">↑ 12%</div>
+                </div>
+                <div class="stat-value">24</div>
+                <div class="stat-label">Active Reasoning Chains</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon cyan">📊</div>
+                    <div class="stat-trend up">↑ 8%</div>
+                </div>
+                <div class="stat-value">94.2%</div>
+                <div class="stat-label">Avg Decision Confidence</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon green">🎯</div>
+                    <div class="stat-trend up">↑ 5%</div>
+                </div>
+                <div class="stat-value">18</div>
+                <div class="stat-label">Active Plans</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-header">
+                    <div class="stat-icon purple">🔄</div>
+                    <div class="stat-trend down">↓ 2%</div>
+                </div>
+                <div class="stat-value">7</div>
+                <div class="stat-label">Abstraction Layers</div>
+            </div>
+        </div>
+
+        <!-- Charts -->
+        <div class="charts-grid">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3 class="chart-title">Reasoning Activity Over Time</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="reasoningChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3 class="chart-title">Decision Confidence Distribution</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="confidenceChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Reasoning Chain -->
+        <div class="reasoning-section">
+            <div class="chain-header">
+                <h3 class="chain-title">📝 Live Reasoning Chain #A-2847</h3>
+                <span class="chain-id">In Progress</span>
+            </div>
+            
+            <div class="reasoning-step">
+                <div class="step-number">1</div>
+                <div class="step-content">
+                    <div class="step-header">
+                        <span class="step-title">Problem Decomposition</span>
+                        <span class="step-confidence high">98% confidence</span>
+                    </div>
+                    <div class="step-description">Breaking down complex query into sub-tasks: data retrieval, analysis, and visualization. Identified 5 independent subtasks that can be executed in parallel.</div>
+                    <div class="step-meta">
+                        <span>⏱️ 12ms</span>
+                        <span>🔄 3 iterations</span>
+                        <span>📊 5 subtasks</span>
+                        <span>🧮 2.4k operations</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="reasoning-step">
+                <div class="step-number">2</div>
+                <div class="step-content">
+                    <div class="step-header">
+                        <span class="step-title">Context Assembly</span>
+                        <span class="step-confidence high">95% confidence</span>
+                    </div>
+                    <div class="step-description">Gathering relevant context from knowledge base, user history, and domain-specific data sources. Retrieved 12 context items.</div>
+                    <div class="step-meta">
+                        <span>⏱️ 28ms</span>
+                        <span>🔄 2 iterations</span>
+                        <span>📚 12 sources</span>
+                        <span>📄 45kb context</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="reasoning-step">
+                <div class="step-number">3</div>
+                <div class="step-content">
+                    <div class="step-header">
+                        <span class="step-title">Solution Synthesis</span>
+                        <span class="step-confidence medium">91% confidence</span>
+                    </div>
+                    <div class="step-description">Generating comprehensive response by combining multiple reasoning strategies. Applied 3 different approaches and merged results.</div>
+                    <div class="step-meta">
+                        <span>⏱️ 45ms</span>
+                        <span>🔄 4 iterations</span>
+                        <span>✨ 3 strategies</span>
+                        <span>📝 12k output</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="reasoning-step">
+                <div class="step-number">4</div>
+                <div class="step-content">
+                    <div class="step-header">
+                        <span class="step-title">Response Validation</span>
+                        <span class="step-confidence high">97% confidence</span>
+                    </div>
+                    <div class="step-description">Validating response against constraints, accuracy checks, and format requirements. All validation checks passed.</div>
+                    <div class="step-meta">
+                        <span>⏱️ 8ms</span>
+                        <span>🔄 1 iteration</span>
+                        <span>✅ 8/8 checks</span>
+                        <span>⚡ Optimized</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Abstraction Layers -->
+        <h3 class="section-title">🔄 Abstraction Layers</h3>
+        <div class="abstraction-grid">
+            <div class="abstraction-card">
+                <div class="abstraction-header">
+                    <span class="abstraction-title">Semantic Reasoning</span>
+                    <div class="abstraction-status active"></div>
+                </div>
+                <div class="abstraction-progress">
+                    <div class="abstraction-progress-bar" style="width: 85%; background: var(--accent-cyan);"></div>
+                </div>
+                <div class="abstraction-info">Layer 7 • 85% active nodes</div>
+            </div>
+            <div class="abstraction-card">
+                <div class="abstraction-header">
+                    <span class="abstraction-title">Pattern Recognition</span>
+                    <div class="abstraction-status active"></div>
+                </div>
+                <div class="abstraction-progress">
+                    <div class="abstraction-progress-bar" style="width: 72%; background: var(--accent-blue);"></div>
+                </div>
+                <div class="abstraction-info">Layer 6 • 72% active nodes</div>
+            </div>
+            <div class="abstraction-card">
+                <div class="abstraction-header">
+                    <span class="abstraction-title">Temporal Modeling</span>
+                    <div class="abstraction-status active"></div>
+                </div>
+                <div class="abstraction-progress">
+                    <div class="abstraction-progress-bar" style="width: 68%; background: var(--accent-purple);"></div>
+                </div>
+                <div class="abstraction-info">Layer 5 • 68% active nodes</div>
+            </div>
+            <div class="abstraction-card">
+                <div class="abstraction-header">
+                    <span class="abstraction-title">Causal Inference</span>
+                    <div class="abstraction-status active"></div>
+                </div>
+                <div class="abstraction-progress">
+                    <div class="abstraction-progress-bar" style="width: 63%; background: var(--accent-green);"></div>
+                </div>
+                <div class="abstraction-info">Layer 4 • 63% active nodes</div>
+            </div>
+            <div class="abstraction-card">
+                <div class="abstraction-header">
+                    <span class="abstraction-title">Memory Integration</span>
+                    <div class="abstraction-status pending"></div>
+                </div>
+                <div class="abstraction-progress">
+                    <div class="abstraction-progress-bar" style="width: 45%; background: var(--accent-yellow);"></div>
+                </div>
+                <div class="abstraction-info">Layer 3 • 45% active nodes</div>
+            </div>
+            <div class="abstraction-card">
+                <div class="abstraction-header">
+                    <span class="abstraction-title">Attention Routing</span>
+                    <div class="abstraction-status active"></div>
+                </div>
+                <div class="abstraction-progress">
+                    <div class="abstraction-progress-bar" style="width: 92%; background: var(--accent-cyan);"></div>
+                </div>
+                <div class="abstraction-info">Layer 2 • 92% active nodes</div>
+            </div>
+        </div>
+
+        <!-- Planning Mechanisms -->
+        <div class="planning-section">
+            <h3 class="section-title">🎯 Active Planning Mechanisms</h3>
+            <div class="planning-grid">
+                <div class="planning-card">
+                    <div class="planning-header">
+                        <span class="planning-title">Data Analysis Plan</span>
+                        <div class="planning-status active"></div>
+                    </div>
+                    <div class="planning-progress">
+                        <div class="planning-progress-bar" style="width: 75%; background: var(--accent-green);"></div>
+                    </div>
+                    <div class="planning-info">3/4 steps • Est. 2min remaining</div>
+                </div>
+                <div class="planning-card">
+                    <div class="planning-header">
+                        <span class="planning-title">Validation Pipeline</span>
+                        <div class="planning-status active"></div>
+                    </div>
+                    <div class="planning-progress">
+                        <div class="planning-progress-bar" style="width: 50%; background: var(--accent-blue);"></div>
+                    </div>
+                    <div class="planning-info">2/4 steps • Est. 5min remaining</div>
+                </div>
+                <div class="planning-card">
+                    <div class="planning-header">
+                        <span class="planning-title">Report Generation</span>
+                        <div class="planning-status pending"></div>
+                    </div>
+                    <div class="planning-progress">
+                        <div class="planning-progress-bar" style="width: 25%; background: var(--accent-purple);"></div>
+                    </div>
+                    <div class="planning-info">1/4 steps • Est. 8min remaining</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Chart defaults
+        const chartDefaults = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    labels: { color: '#94a3b8' }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#64748b' },
+                    grid: { color: '#2d3748' }
+                },
+                y: {
+                    ticks: { color: '#64748b' },
+                    grid: { color: '#2d3748' }
+                }
+            }
+        };
+
+        // Reasoning Activity Chart
+        new Chart(document.getElementById('reasoningChart'), {
+            type: 'line',
+            data: {
+                labels: ['00:00', '04:00', '08:00', '12:00', '16:00', '20:00', '24:00'],
+                datasets: [{
+                    label: 'Reasoning Chains',
+                    data: [12, 19, 25, 32, 28, 35, 24],
+                    borderColor: '#06b6d4',
+                    backgroundColor: 'rgba(6, 182, 212, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }, {
+                    label: 'Decisions Made',
+                    data: [8, 15, 22, 28, 24, 30, 20],
+                    borderColor: '#3b82f6',
+                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }, {
+                    label: 'Abstraction Ops',
+                    data: [5, 8, 12, 15, 13, 18, 11],
+                    borderColor: '#8b5cf6',
+                    backgroundColor: 'rgba(139, 92, 246, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: chartDefaults
+        });
+
+        // Confidence Distribution Chart
+        new Chart(document.getElementById('confidenceChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ['90-100%', '80-90%', '70-80%', 'Below 70%'],
+                datasets: [{
+                    data: [65, 22, 10, 3],
+                    backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#ef4444'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#94a3b8', padding: 15 }
+                    }
+                }
+            }
+        });
+
+        // Real-time updates simulation
+        setInterval(() => {
+            const value = document.querySelector('.stat-card:nth-child(1) .stat-value');
+            const current = parseInt(value.textContent);
+            value.textContent = Math.max(20, Math.min(30, current + Math.floor(Math.random() * 3) - 1));
+        }, 3000);
+    </script>
+</body>
+</html>
